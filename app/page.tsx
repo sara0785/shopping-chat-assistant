@@ -46,6 +46,12 @@ const parseBudget = (q: string) => {
   return match ? Number(match[1].replace(/,/g, '')) : null
 }
 
+const AVAILABLE_COUPONS: { [key: string]: number } = {
+  'MIRA10': 10,
+  'SAVE20': 20,
+  'STUDENT15': 15,
+}
+
 export default function Page() {
   const [mode, setMode] = useState<MiraMode>('human')
   const [query, setQuery] = useState('')
@@ -57,6 +63,11 @@ export default function Page() {
   const [address, setAddress] = useState('Sara • NSUT Campus, Sector 3, Dwarka, New Delhi - 110078')
   const [isEditingAddress, setIsEditingAddress] = useState(false)
   const [tempAddress, setTempAddress] = useState(address)
+
+  // Promo Code State
+  const [promoCode, setPromoCode] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
 
   // Voice Input State & Ref
   const [isListening, setIsListening] = useState(false)
@@ -228,7 +239,7 @@ export default function Page() {
 
       if (!isDeclined) {
         setIsPaid(true)
-        log('Payment Settled', `Settled ${formatINR(selected.price)} via ${methodName}`)
+        log('Payment Settled', `Settled ${formatINR(finalPayable)} via ${methodName}`)
 
         setMessages((m) => [
           ...m,
@@ -401,6 +412,12 @@ export default function Page() {
     selected?.originalPrice && selected.originalPrice > selected.price
       ? selected.originalPrice - selected.price
       : 0
+
+  const promoDiscountAmt = appliedPromo && AVAILABLE_COUPONS[appliedPromo] 
+    ? Math.round((selected ? selected.price : 0) * (AVAILABLE_COUPONS[appliedPromo] / 100)) 
+    : 0
+
+  const finalPayable = selected ? Math.max(0, selected.price - promoDiscountAmt) : 0
 
   return (
     <main className="relative min-h-screen bg-[#FAF9F5] text-[#1c2420] overflow-x-hidden selection:bg-[#184738]/20 selection:text-[#184738]">
@@ -675,6 +692,95 @@ export default function Page() {
                       </p>
                     </div>
 
+                    {/* Promo Code Input Section */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex gap-1.5">
+                        <input 
+                          type="text" 
+                          value={promoCode}
+                          onChange={(e) => {
+                            setPromoCode(e.target.value)
+                            setPromoError(null)
+                          }}
+                          placeholder="PROMO" 
+                          className="flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-[8px] uppercase font-mono outline-none focus:border-[#184738] shadow-inner"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && promoCode.trim()) {
+                              const code = promoCode.trim().toUpperCase()
+                              if (AVAILABLE_COUPONS[code]) {
+                                setAppliedPromo(code)
+                                setPromoError(null)
+                                log('Promo Applied', `Coupon code "${code}" validated against Merchant Orchestrator bounds`)
+                                setPromoCode('')
+                              } else {
+                                setPromoError('Invalid or expired coupon code')
+                                log('Promo Failed', `Invalid code "${code}" entered`)
+                              }
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            if (promoCode.trim()) {
+                              const code = promoCode.trim().toUpperCase()
+                              if (AVAILABLE_COUPONS[code]) {
+                                setAppliedPromo(code)
+                                setPromoError(null)
+                                log('Promo Applied', `Coupon code "${code}" validated against Merchant Orchestrator bounds`)
+                                setPromoCode('')
+                              } else {
+                                setPromoError('Invalid or expired coupon code')
+                                log('Promo Failed', `Invalid code "${code}" entered`)
+                              }
+                            }
+                          }}
+                          className="rounded-xl bg-stone-200 px-3.5 py-2 text-[9px] font-semibold text-stone-700 hover:bg-stone-300 transition cursor-pointer"
+                        >
+                          Apply
+                        </button>
+                      </div>
+
+                      {promoError && (
+                        <p className="text-[10px] text-rose-600 px-1 font-medium">{promoError}</p>
+                      )}
+
+                      {/* Available Coupons Suggestions */}
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                        <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">Available coupons:</span>
+                        {Object.keys(AVAILABLE_COUPONS).map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => {
+                              setAppliedPromo(c)
+                              setPromoError(null)
+                              log('Promo Applied', `Coupon code "${c}" selected from available list`)
+                            }}
+                            className="rounded-full border border-stone-200/90 bg-white/90 px-3 py-1 text-[11px] font-medium text-stone-600 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-[#f4f9f6] hover:text-[#184738] hover:shadow-[0_4px_12px_rgba(24,71,56,0.12)] active:scale-95 cursor-pointer"
+                          >
+                            {c} ({AVAILABLE_COUPONS[c]}%)
+                          </button>
+                        ))}
+                      </div>
+
+                      {appliedPromo && (
+                        <div className="flex items-center justify-between text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                          <span>Promo <strong>{appliedPromo}</strong> active</span>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setAppliedPromo(null)
+                              log('Promo Removed', 'Active discount coupon cleared')
+                            }}
+                            className="hover:underline font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Price Breakdown */}
                     <div className="border-t border-[#f0ede6] pt-3 space-y-2 text-xs">
                       {selectedSavings > 0 && (
@@ -692,14 +798,23 @@ export default function Page() {
                         </>
                       )}
 
+                      {appliedPromo && (
+                        <div className="flex justify-between text-emerald-700 font-semibold">
+                          <span className="flex items-center gap-1">
+                            <Tag className="size-3" /> Coupon ({appliedPromo})
+                          </span>
+                          <span className="font-mono">-{formatINR(promoDiscountAmt)}</span>
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center pt-2.5 border-t border-[#f4f2eb] text-sm font-bold">
                         <span>Total Payable</span>
-                        <span className="font-mono text-lg text-[#184738]">{formatINR(selected.price)}</span>
+                        <span className="font-mono text-lg text-[#184738]">{formatINR(finalPayable)}</span>
                       </div>
 
-                      {selectedSavings > 0 && (
+                      {(selectedSavings > 0 || appliedPromo) && (
                         <div className="rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 text-center text-xs font-medium text-emerald-800 border border-emerald-200/70 shadow-2xs">
-                          🎉 You are saving {formatINR(selectedSavings)} on this order!
+                          🎉 You are saving {formatINR(selectedSavings + promoDiscountAmt)} on this order!
                         </div>
                       )}
                     </div>
@@ -846,7 +961,7 @@ export default function Page() {
                   <span className="text-muted-foreground">Amount:</span>
                   <div className="text-right">
                     <span className="text-xl font-bold text-[#184738] font-mono">
-                      {formatINR(selected?.price || 799)}
+                      {formatINR(finalPayable)}
                     </span>
                     {selectedSavings > 0 && (
                       <span className="block text-[10px] text-emerald-700 font-semibold">
@@ -961,7 +1076,7 @@ export default function Page() {
                           Processing with Bank...
                         </>
                       ) : (
-                        `Pay ${formatINR(selected?.price || 799)}`
+                        `Pay ${formatINR(finalPayable)}`
                       )}
                     </button>
                   </div>
@@ -969,7 +1084,7 @@ export default function Page() {
                   <div className="flex flex-col items-center justify-center p-2 text-center space-y-3">
                     <div className="p-3 bg-white border border-stone-200 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=upi://pay?pa=mira@razorpay&am=${selected?.price || 799}&cu=INR`}
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=upi://pay?pa=mira@razorpay&am=${finalPayable}&cu=INR`}
                         alt="Scan UPI QR"
                         className="size-32 object-contain"
                       />
