@@ -270,16 +270,21 @@ export default function Page() {
 
     setTimeout(() => {
       const candidates = CATALOG.filter((p) => {
-        const textMatch =
-          p.name.toLowerCase().includes(lower) ||
-          p.category.toLowerCase().includes(lower) ||
-          p.tags.some((t) => lower.includes(t.toLowerCase()))
-        return budget === null ? textMatch : p.price <= budget
+        const nameMatch = p.name.toLowerCase().includes(lower)
+        const categoryMatch = p.category.toLowerCase().includes(lower)
+        const tagMatch = p.tags.some((t) => lower.includes(t.toLowerCase()) || t.toLowerCase().includes(lower))
+        
+        const isLampQuery = lower.includes('lamp') && (p.name.toLowerCase().includes('lamp') || p.tags.includes('lamp') || p.category.toLowerCase().includes('lamp'))
+        const isCoasterQuery = lower.includes('coaster') && (p.name.toLowerCase().includes('coaster') || p.tags.includes('coaster'))
+        const isCandleQuery = (lower.includes('candle') || lower.includes('soy')) && (p.name.toLowerCase().includes('candle') || p.tags.includes('candle'))
+
+        const matchesQuery = nameMatch || categoryMatch || tagMatch || isLampQuery || isCoasterQuery || isCandleQuery
+        const matchesBudget = budget === null ? true : p.price <= budget
+
+        return matchesQuery && matchesBudget
       })
 
-      const found = (candidates.length ? candidates : CATALOG).filter(
-        (p) => budget === null || p.price <= budget
-      )
+      const found = candidates
 
       setIsThinking(false)
       setResults(found)
@@ -287,9 +292,9 @@ export default function Page() {
         ...m,
         {
           role: 'assistant',
-          text: found.length
+          text: found.length > 0
             ? `Found ${found.length} verified item${found.length > 1 ? 's' : ''} matching "${clean}" within your budget. Ready to lock into your Checkout Desk.`
-            : `No exact items found under that threshold, but here are our top-rated alternatives matching your preferences.`,
+            : `No exact items found matching "${clean}" within your budget. Try searching for "lamp", "coaster", or "candle".`,
         },
       ])
       log('Query Parsing', `Matched ${found.length} products for "${clean}"`)
