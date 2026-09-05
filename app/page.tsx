@@ -56,7 +56,7 @@ export default function Page() {
   const [mode, setMode] = useState<MiraMode>('human')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Product[]>(CATALOG.slice(0, 2))
-  const [selected, setSelected] = useState<Product | null>(CATALOG[1])
+  const [selected, setSelected] = useState<Product[]>([CATALOG[1]]) // Array format for multiple selection
   const [inspected, setInspected] = useState<Product | null>(null)
 
   // Default Address State
@@ -94,7 +94,7 @@ export default function Page() {
   const [cardExpiry, setCardExpiry] = useState('')
   const [cvv, setCvv] = useState('')
 
-  const [link, setLink] = useState('https://rzp.io/l/mira-soy-candle-1')
+  const [link, setLink] = useState('https://rzp.io/l/mira-checkout-desk')
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([
     { role: 'assistant', text: "Hi Sara! I'm Mira, your autonomous commerce assistant. Tell me what you're looking for (or tap the mic) and I'll curate the best options within your policy corridor." },
   ])
@@ -130,20 +130,28 @@ export default function Page() {
   }
 
   const select = (p: Product, isAgent = false) => {
-    setSelected(p)
+    setSelected((prev) => {
+      const exists = prev.some((item) => item.id === p.id)
+      if (exists) {
+        log('Product removed', `${p.name} removed from 3D Checkout Desk`)
+        return prev.filter((item) => item.id !== p.id)
+      } else {
+        log('Product selected', `${p.name} locked into 3D Checkout Desk (${isAgent ? 'Autonomous Agent' : 'Human User'})`)
+        return [...prev, p]
+      }
+    })
     setLink(`https://rzp.io/l/mira-${p.id}-1`)
-    log('Product selected', `${p.name} locked into 3D Checkout Desk (${isAgent ? 'Autonomous Agent' : 'Human User'})`)
     setInspected(null)
   }
 
   const confirmPayment = () => {
-    if (!selected) return
+    if (selected.length === 0) return
     setIsPayModalOpen(true)
     setIsPaid(false)
     setIsProcessing(false)
     setCardError(null)
     setInvalidFields({})
-    log('Gated Action', `Payment modal initiated for ${selected.name}`)
+    log('Gated Action', `Payment modal initiated for ${selected.length} item(s)`)
   }
 
   const handleCardNumberChange = (val: string) => {
@@ -173,7 +181,7 @@ export default function Page() {
   }
 
   const executePayment = (methodName: string) => {
-    if (!selected) return
+    if (selected.length === 0) return
 
     if (paymentMethod === 'card') {
       const cleanCard = cardNumber.replace(/\s+/g, '')
@@ -245,13 +253,14 @@ export default function Page() {
           ...m,
           {
             role: 'assistant',
-            text: `Payment confirmed for ${selected.name}! Your order has been dispatched to ${address.split('•')[1]?.trim() || 'your default address'}. Transaction token logged.`,
+            text: `Payment confirmed! Your order has been dispatched to ${address.split('•')[1]?.trim() || 'your default address'}. Transaction token logged.`,
           },
         ])
 
         setTimeout(() => {
           setIsPayModalOpen(false)
           setIsPaid(false)
+          setSelected([]) // Clear cart after successful payment
         }, 1400)
       } else {
         setIsPayModalOpen(false)
@@ -261,7 +270,7 @@ export default function Page() {
           ...m,
           {
             role: 'assistant',
-            text: `Payment failed for ${selected.name}. Your payment method was declined by the bank. No charges were made. You can retry anytime from the Checkout Desk.`,
+            text: `Payment failed. Your payment method was declined by the bank. No charges were made. You can retry anytime from the Checkout Desk.`,
           },
         ])
       }
@@ -408,16 +417,16 @@ export default function Page() {
     }, 2800)
   }
 
-  const selectedSavings =
-    selected?.originalPrice && selected.originalPrice > selected.price
-      ? selected.originalPrice - selected.price
-      : 0
+  // Multiple items calculation
+  const subtotal = selected.reduce((sum, item) => sum + item.price, 0)
+  const totalOriginalPrice = selected.reduce((sum, item) => sum + (item.originalPrice || item.price), 0)
+  const selectedSavings = totalOriginalPrice > subtotal ? totalOriginalPrice - subtotal : 0
 
   const promoDiscountAmt = appliedPromo && AVAILABLE_COUPONS[appliedPromo] 
-    ? Math.round((selected ? selected.price : 0) * (AVAILABLE_COUPONS[appliedPromo] / 100)) 
+    ? Math.round(subtotal * (AVAILABLE_COUPONS[appliedPromo] / 100)) 
     : 0
 
-  const finalPayable = selected ? Math.max(0, selected.price - promoDiscountAmt) : 0
+  const finalPayable = Math.max(0, subtotal - promoDiscountAmt)
 
   return (
     <main className="relative min-h-screen bg-[#FAF9F5] text-[#1c2420] overflow-x-hidden selection:bg-[#184738]/20 selection:text-[#184738]">
@@ -506,7 +515,7 @@ export default function Page() {
           <div className="main-grid max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column: Chat & 3D Interactive Catalog */}
             <section className="chat-pane lg:col-span-2 space-y-6">
-              {/* Intro Banner (Find Something - Pop-up ON) */}
+              {/* Intro Banner */}
               <div className="group relative overflow-hidden rounded-3xl border border-white/80 bg-gradient-to-br from-white/95 via-white/80 to-emerald-50/40 p-7 shadow-[0_15px_35px_-10px_rgba(24,71,56,0.06)] backdrop-blur-xl transition-all duration-300 ease-out hover:-translate-y-1 hover:bg-[#f4f9f6] hover:border-emerald-300 hover:shadow-[0_22px_45px_-12px_rgba(24,71,56,0.12)] cursor-default">
                 <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100/80 px-2.5 py-1 text-[10px] font-bold tracking-widest text-[#184738] uppercase shadow-xs transition-colors group-hover:bg-emerald-200/80">
                   <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -521,7 +530,7 @@ export default function Page() {
                 </p>
               </div>
 
-              {/* Chat Thread with Light Gradient Assistant Messages */}
+              {/* Chat Thread */}
               <div className="chat-thread space-y-3">
                 {messages.map((m, i) => (
                   <div
@@ -552,20 +561,20 @@ export default function Page() {
                 )}
               </div>
 
-              {/* Items Shown / Product Grid (Pop-up ON) */}
+              {/* Product Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 perspective-1000">
                 {results.map((p) => (
                   <ProductCard3D
                     key={p.id}
                     product={p}
-                    selected={selected?.id === p.id}
+                    selected={selected.some((item) => item.id === p.id)}
                     onInspect={inspect}
                     onSelect={(item) => select(item, false)}
                   />
                 ))}
               </div>
 
-              {/* Search Control Bar (Try Asking Pills have pop-up ON) */}
+              {/* Search Control Bar */}
               <div className="space-y-2.5">
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">Try asking:</span>
@@ -621,10 +630,10 @@ export default function Page() {
               </div>
             </section>
 
-            {/* Right Column: Static Checkout Desk & Reasoning Log (Pop-up OFF) */}
+            {/* Right Column: Checkout Desk & Reasoning Log */}
             <aside className="desk-pane space-y-6">
               
-              {/* Checkout Desk (Static) */}
+              {/* Checkout Desk */}
               <div className="rounded-3xl border border-white/80 bg-white/90 p-6 shadow-[0_15px_35px_-10px_rgba(0,0,0,0.06)] backdrop-blur-xl">
                 <div className="flex items-center justify-between pb-3.5 border-b border-[#f0ede6]">
                   <div>
@@ -636,38 +645,50 @@ export default function Page() {
                     </h2>
                   </div>
                   <div className="flex items-center gap-1.5 rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600 font-medium shadow-inner">
-                    <span>{selected ? 1 : 0} item</span>
+                    <span>{selected.length} item{selected.length !== 1 ? 's' : ''}</span>
                     <ShoppingBag className="size-3.5" />
                   </div>
                 </div>
 
-                {selected ? (
+                {selected.length > 0 ? (
                   <div className="pt-4 space-y-4">
-                    {/* Item Card */}
-                    <div className="flex items-center gap-3.5 rounded-2xl bg-stone-50/80 p-2.5 border border-stone-200/60 shadow-inner">
-                      <div className="size-14 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-white shadow-xs">
-                        {selected.image ? (
-                          <img src={selected.image} alt={selected.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <div
-                            className="h-full w-full flex items-center justify-center text-xs font-bold"
-                            style={{ background: selected.color }}
-                          >
-                            {selected.initials}
+                    {/* Multiple Item Cards List */}
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {selected.map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-stone-50/80 p-2.5 border border-stone-200/60 shadow-inner">
+                          <div className="size-12 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-white shadow-xs">
+                            {item.image ? (
+                              <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div
+                                className="h-full w-full flex items-center justify-center text-xs font-bold"
+                                style={{ background: item.color }}
+                              >
+                                {item.initials}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate text-[#1c2420]">{selected.name}</div>
-                        <div className="flex items-center gap-1.5 text-xs mt-0.5">
-                          <span className="font-mono text-[#184738] font-bold">{formatINR(selected.price)}</span>
-                          {selected.originalPrice && selected.originalPrice > selected.price && (
-                            <span className="font-mono text-stone-400 line-through text-[11px]">
-                              {formatINR(selected.originalPrice)}
-                            </span>
-                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold truncate text-[#1c2420]">{item.name}</div>
+                            <div className="flex items-center gap-1.5 text-xs mt-0.5">
+                              <span className="font-mono text-[#184738] font-bold">{formatINR(item.price)}</span>
+                              {item.originalPrice && item.originalPrice > item.price && (
+                                <span className="font-mono text-stone-400 line-through text-[10px]">
+                                  {formatINR(item.originalPrice)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => select(item)}
+                            className="text-stone-400 hover:text-rose-600 transition p-1 cursor-pointer"
+                            title="Remove item"
+                          >
+                            <X className="size-3.5" />
+                          </button>
                         </div>
-                      </div>
+                      ))}
                     </div>
 
                     {/* Pre-filled Default Delivery Address Pill */}
@@ -786,8 +807,8 @@ export default function Page() {
                       {selectedSavings > 0 && (
                         <>
                           <div className="flex justify-between text-muted-foreground">
-                            <span>Original Price (MRP)</span>
-                            <span className="font-mono line-through">{formatINR(selected.originalPrice!)}</span>
+                            <span>Original Total (MRP)</span>
+                            <span className="font-mono line-through">{formatINR(totalOriginalPrice)}</span>
                           </div>
                           <div className="flex justify-between text-emerald-700 font-semibold">
                             <span className="flex items-center gap-1">
@@ -841,12 +862,12 @@ export default function Page() {
                   </div>
                 ) : (
                   <div className="py-10 text-center text-xs text-muted-foreground">
-                    Select any product from the catalog to populate desk.
+                    Select products from the catalog to populate desk.
                   </div>
                 )}
               </div>
 
-              {/* Reasoning Log (Static) */}
+              {/* Reasoning Log */}
               <div className="logs rounded-3xl border border-white/80 bg-white/90 p-6 shadow-[0_15px_35px_-10px_rgba(0,0,0,0.06)] backdrop-blur-xl">
                 <div className="flex items-center justify-between pb-3.5 border-b border-[#f0ede6]">
                   <div>
@@ -965,7 +986,7 @@ export default function Page() {
                     </span>
                     {selectedSavings > 0 && (
                       <span className="block text-[10px] text-emerald-700 font-semibold">
-                        MRP {formatINR(selected!.originalPrice!)} (Saved {formatINR(selectedSavings)})
+                        Saved {formatINR(selectedSavings)}
                       </span>
                     )}
                   </div>
@@ -1076,7 +1097,7 @@ export default function Page() {
                           Processing with Bank...
                         </>
                       ) : (
-                        `Pay ${formatINR(finalPayable)}`
+                        <span className="text-white">Pay {formatINR(finalPayable)}</span>
                       )}
                     </button>
                   </div>
@@ -1122,7 +1143,7 @@ export default function Page() {
   )
 }
 
-// 3D Product Card Component with Hover Elevation (Items Shown - Pop-up ON)
+// 3D Product Card Component with Multiple Selection State
 function ProductCard3D({
   product,
   selected,
@@ -1201,7 +1222,7 @@ function ProductCard3D({
               : 'bg-[#184738] text-white hover:bg-[#12362b] shadow-2xs'
           }`}
         >
-          {selected ? 'In Desk' : 'Add to Desk'}
+          {selected ? 'In Desk ✓' : 'Add to Desk'}
         </button>
       </div>
     </article>
@@ -1245,7 +1266,7 @@ function Details({
           </div>
 
           <div className="mt-4 flex gap-4">
-            {/* Clickable Image Container to trigger HD Full-Screen Lightbox */}
+            {/* Clickable Image Container */}
             <div
               onClick={() => {
                 if (product.image) {
